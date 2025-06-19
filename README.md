@@ -1,3 +1,2 @@
 # libVLC-Archive
-LibVLC 4 library
-See Release
+LibVLC 4 library<br>See Release

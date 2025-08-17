@@ -1,0 +1,38 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+    # Inputs the workflow accepts.
+    inputs:
+      tags:
+        # Friendly description to be shown in the UI instead of 'name'
+        description: 'tags'
+        # Default value if no value is explicitly provided
+        default: '21'
+        # Input has to be provided for the workflow to run
+        required: true
+        # The data type of the input
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Extract Docker image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ vars.DOCKER_USERNAME }}/my-image
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ${{ inputs.tags }}
+          annotations: ${{ steps.meta.outputs.annotations }}

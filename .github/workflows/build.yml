@@ -8,7 +8,7 @@ on:
         # Friendly description to be shown in the UI instead of 'name'
         description: 'tags'
         # Default value if no value is explicitly provided
-        default: '21'
+        default: 'openjdk-vlc:21'
         # Input has to be provided for the workflow to run
         required: true
         # The data type of the input
@@ -20,11 +20,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Extract Docker image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ vars.DOCKER_USERNAME }}/openjdk-vlc
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -34,5 +29,4 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: ${{ inputs.tags }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+          tags: ${{ vars.DOCKER_USERNAME }}/${{ inputs.tags }}

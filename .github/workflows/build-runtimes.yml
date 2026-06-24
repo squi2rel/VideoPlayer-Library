@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub Release tag to create or update
+        description: Moving GitHub Release tag to update
         default: runtime-latest
         required: true
         type: string

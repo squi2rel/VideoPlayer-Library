@@ -10,11 +10,52 @@ release_tag="${RELEASE_TAG:?RELEASE_TAG is required}"
 asset_dir="${ASSET_DIR:-$DIST_DIR}"
 overwrite="${OVERWRITE:-true}"
 body_file="$WORK_DIR/release-body.md"
+manifest_file="$asset_dir/native-downloads.json"
 
 need_cmd gh
+need_cmd python3
 
 mapfile -t assets < <(find "$asset_dir" -type f -name '*.zip' | sort)
 [[ "${#assets[@]}" -gt 0 ]] || die "no zip assets found under $asset_dir"
+
+generate_native_downloads_manifest() {
+  local out="$1"
+  shift
+
+  local repo="${GITHUB_REPOSITORY:-squi2rel/VideoPlayer-Library}"
+  python3 - "$repo" "$release_tag" "$out" "$@" <<'PY'
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+from urllib.parse import quote
+
+repo, release_tag, out, *assets = sys.argv[1:]
+data = {"urls": {"vlc": {}, "mpv": {}}}
+pattern = re.compile(r"^lib(vlc|mpv)-([^-]+)-(.+)\.zip$")
+
+for asset in sorted(assets, key=lambda p: Path(p).name):
+    path = Path(asset)
+    match = pattern.fullmatch(path.name)
+    if not match:
+        continue
+
+    runtime, platform, arch = match.groups()
+    key = f"{platform}_{arch}"
+    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    url = (
+        f"https://github.com/{repo}/releases/download/"
+        f"{quote(release_tag, safe='')}/{quote(path.name)}"
+    )
+    data["urls"][runtime][key] = [{"url": url, "sha256": sha256}]
+
+Path(out).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+}
+
+generate_native_downloads_manifest "$manifest_file" "${assets[@]}"
+upload_assets=("${assets[@]}" "$manifest_file")
 
 {
   echo "# Runtime Libraries"
@@ -35,7 +76,7 @@ else
 fi
 
 if [[ "$overwrite" == "true" ]]; then
-  gh release upload "$release_tag" "${assets[@]}" --clobber
+  gh release upload "$release_tag" "${upload_assets[@]}" --clobber
 else
-  gh release upload "$release_tag" "${assets[@]}"
+  gh release upload "$release_tag" "${upload_assets[@]}"
 fi

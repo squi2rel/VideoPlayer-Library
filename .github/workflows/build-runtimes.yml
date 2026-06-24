@@ -1,0 +1,284 @@
+name: Build Runtime Libraries
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag to create or update
+        default: runtime-latest
+        required: true
+        type: string
+      vlc_version:
+        description: VLC desktop release version, or latest-3
+        default: latest-3
+        required: true
+        type: string
+      android_libvlc_version:
+        description: Android libvlc-all Maven version, or latest-3
+        default: latest-3
+        required: true
+        type: string
+      mpv_ref:
+        description: mpv release tag, or latest-release
+        default: latest-release
+        required: true
+        type: string
+      mpv_android_ref:
+        description: mpv-android release tag, or latest-release
+        default: latest-release
+        required: true
+        type: string
+      overwrite:
+        description: Upload assets with --clobber
+        default: true
+        required: true
+        type: boolean
+  schedule:
+    - cron: "27 3 * * 0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: runtime-libraries-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      vlc_version: ${{ steps.resolve.outputs.vlc_version }}
+      android_libvlc_version: ${{ steps.resolve.outputs.android_libvlc_version }}
+      mpv_ref: ${{ steps.resolve.outputs.mpv_ref }}
+      mpv_android_ref: ${{ steps.resolve.outputs.mpv_android_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: resolve
+        name: Resolve release versions
+        env:
+          VLC_VERSION_INPUT: ${{ github.event.inputs.vlc_version || 'latest-3' }}
+          ANDROID_LIBVLC_VERSION_INPUT: ${{ github.event.inputs.android_libvlc_version || 'latest-3' }}
+          MPV_REF_INPUT: ${{ github.event.inputs.mpv_ref || 'latest-release' }}
+          MPV_ANDROID_REF_INPUT: ${{ github.event.inputs.mpv_android_ref || 'latest-release' }}
+          RELEASE_TAG_INPUT: ${{ github.event.inputs.release_tag || 'runtime-latest' }}
+        run: |
+          scripts/ci/resolve-versions.sh
+          echo "release_tag=$RELEASE_TAG_INPUT" >> "$GITHUB_OUTPUT"
+
+  libvlc-windows:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install extraction tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends p7zip-full zip
+      - name: Package VLC Windows runtime
+        env:
+          TARGET_OS: windows
+          TARGET_ARCH: ${{ matrix.arch }}
+          VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
+        run: scripts/ci/package-vlc-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libvlc-windows-${{ matrix.arch }}
+          path: dist/*.zip
+
+  libvlc-macos:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package VLC macOS runtime
+        env:
+          TARGET_OS: macos
+          TARGET_ARCH: ${{ matrix.arch }}
+          VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
+        run: scripts/ci/package-vlc-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libvlc-macos-${{ matrix.arch }}
+          path: dist/*.zip
+
+  libvlc-linux:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package VLC Linux runtime from Flathub stable
+        env:
+          TARGET_OS: linux
+          TARGET_ARCH: ${{ matrix.arch }}
+          VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
+        run: scripts/ci/build-vlc-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libvlc-linux-${{ matrix.arch }}
+          path: dist/*.zip
+
+  libvlc-android:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install extraction tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends unzip zip
+      - name: Package Android libvlc runtime
+        env:
+          TARGET_OS: android
+          TARGET_ARCH: ${{ matrix.abi }}
+          VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
+          ANDROID_LIBVLC_VERSION: ${{ needs.resolve.outputs.android_libvlc_version }}
+        run: scripts/ci/package-vlc-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libvlc-android-${{ matrix.abi }}
+          path: dist/*.zip
+
+  libmpv-linux:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            runner: ubuntu-24.04
+          - arch: arm32
+            runner: ubuntu-24.04-arm
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build mpv Linux runtime
+        env:
+          TARGET_OS: linux
+          TARGET_ARCH: ${{ matrix.arch }}
+          MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
+        run: scripts/ci/build-mpv-desktop.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-linux-${{ matrix.arch }}
+          path: dist/*.zip
+
+  libmpv-macos:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build mpv macOS runtime
+        env:
+          TARGET_OS: macos
+          TARGET_ARCH: ${{ matrix.arch }}
+          MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
+        run: scripts/ci/build-mpv-desktop.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-macos-${{ matrix.arch }}
+          path: dist/*.zip
+
+  libmpv-windows:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache mpv Windows cross downloads
+        uses: actions/cache@v4
+        with:
+          path: .runtime-work/downloads
+          key: mpv-windows-cross-downloads-${{ matrix.arch }}-${{ needs.resolve.outputs.mpv_ref }}
+          restore-keys: |
+            mpv-windows-cross-downloads-${{ matrix.arch }}-
+            mpv-windows-cross-downloads-
+      - name: Build mpv Windows runtime
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
+        run: scripts/ci/build-mpv-windows-cross.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-windows-${{ matrix.arch }}
+          path: dist/*.zip
+
+  libmpv-android:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build mpv Android runtime
+        env:
+          TARGET_ARCH: ${{ matrix.abi }}
+          MPV_ANDROID_REF: ${{ needs.resolve.outputs.mpv_android_ref }}
+        run: scripts/ci/build-mpv-android.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-android-${{ matrix.abi }}
+          path: dist/*.zip
+
+  publish:
+    needs:
+      - resolve
+      - libvlc-windows
+      - libvlc-macos
+      - libvlc-linux
+      - libvlc-android
+      - libmpv-linux
+      - libmpv-macos
+      - libmpv-windows
+      - libmpv-android
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+          ASSET_DIR: release-assets
+          OVERWRITE: ${{ inputs.overwrite }}
+        run: scripts/ci/publish-release.sh

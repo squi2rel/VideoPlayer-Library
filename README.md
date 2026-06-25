@@ -6,7 +6,7 @@
 
 The workflow intentionally uses release sources instead of nightly sources. Linux libVLC is extracted from the Flathub stable VLC package and validated for a full plugin set, because package-manager VLC builds can miss RTSP-related modules.
 
-Windows libmpv packages are cross-compiled on Ubuntu with llvm-mingw and source-built dependencies for x86, x64, and arm64, avoiding MSYS2 MinGW package gaps.
+libmpv packages keep the output as loadable shared libraries, but build core third-party media dependencies as static libraries from pinned release tags and reject packages that still import loose FFmpeg/libass/libplacebo/Lua/rubberband/uchardet/zimg/shaderc/etc. runtime libraries. Linux libmpv enables the audio, video, and hardware-decoding backends while allowing the host system's platform ABI libraries such as X11, Wayland, EGL, VAAPI, VDPAU, PulseAudio, PipeWire, and Vulkan to resolve from the OS. Windows libmpv is cross-compiled on Ubuntu with llvm-mingw for x86, x64, and arm64; the zip contains only the final `libmpv` DLL, with the Vulkan loader statically linked when Vulkan is enabled.
 
 Android libVLC packages also build and include `libvlc_jvm_bridge.so`, which initializes VLC's JNI entry point from the app-side bridge.
 

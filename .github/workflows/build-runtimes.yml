@@ -82,7 +82,7 @@ jobs:
           TARGET_OS: windows
           TARGET_ARCH: ${{ matrix.arch }}
           VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
-        run: scripts/ci/package-vlc-release.sh
+        run: bash scripts/ci/package-vlc-release.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libvlc-windows-${{ matrix.arch }}
@@ -106,7 +106,7 @@ jobs:
           TARGET_OS: macos
           TARGET_ARCH: ${{ matrix.arch }}
           VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
-        run: scripts/ci/package-vlc-release.sh
+        run: bash scripts/ci/package-vlc-release.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libvlc-macos-${{ matrix.arch }}
@@ -130,7 +130,7 @@ jobs:
           TARGET_OS: linux
           TARGET_ARCH: ${{ matrix.arch }}
           VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
-        run: scripts/ci/build-vlc-linux.sh
+        run: bash scripts/ci/build-vlc-linux.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libvlc-linux-${{ matrix.arch }}
@@ -153,7 +153,7 @@ jobs:
           TARGET_ARCH: ${{ matrix.abi }}
           VLC_VERSION: ${{ needs.resolve.outputs.vlc_version }}
           ANDROID_LIBVLC_VERSION: ${{ needs.resolve.outputs.android_libvlc_version }}
-        run: scripts/ci/package-vlc-release.sh
+        run: bash scripts/ci/package-vlc-release.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libvlc-android-${{ matrix.abi }}
@@ -181,7 +181,7 @@ jobs:
           TARGET_OS: linux
           TARGET_ARCH: ${{ matrix.arch }}
           MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
-        run: scripts/ci/build-mpv-desktop.sh
+        run: bash scripts/ci/build-mpv-desktop.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libmpv-linux-${{ matrix.arch }}
@@ -205,7 +205,7 @@ jobs:
           TARGET_OS: macos
           TARGET_ARCH: ${{ matrix.arch }}
           MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
-        run: scripts/ci/build-mpv-desktop.sh
+        run: bash scripts/ci/build-mpv-desktop.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libmpv-macos-${{ matrix.arch }}
@@ -232,7 +232,7 @@ jobs:
         env:
           TARGET_ARCH: ${{ matrix.arch }}
           MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
-        run: scripts/ci/build-mpv-windows-cross.sh
+        run: bash scripts/ci/build-mpv-windows-cross.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libmpv-windows-${{ matrix.arch }}
@@ -251,7 +251,7 @@ jobs:
         env:
           TARGET_ARCH: ${{ matrix.abi }}
           MPV_ANDROID_REF: ${{ needs.resolve.outputs.mpv_android_ref }}
-        run: scripts/ci/build-mpv-android.sh
+        run: bash scripts/ci/build-mpv-android.sh
       - uses: actions/upload-artifact@v4
         with:
           name: libmpv-android-${{ matrix.abi }}
@@ -281,4 +281,4 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
           ASSET_DIR: release-assets
           OVERWRITE: ${{ inputs.overwrite }}
-        run: scripts/ci/publish-release.sh
+        run: bash scripts/ci/publish-release.sh

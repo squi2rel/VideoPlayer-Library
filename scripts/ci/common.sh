@@ -17,6 +17,20 @@ die() {
   exit 1
 }
 
+print_ffmpeg_config_log() {
+  local log_file="${1:-ffbuild/config.log}"
+
+  if [[ ! -f "$log_file" ]]; then
+    log "FFmpeg configure failed; $log_file was not created"
+    return 0
+  fi
+
+  log "FFmpeg configure failed; printing $log_file"
+  printf '%s\n' "----- begin $log_file -----" >&2
+  cat "$log_file" >&2 || true
+  printf '%s\n' "----- end $log_file -----" >&2
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
@@ -24,22 +38,69 @@ need_cmd() {
 install_pip_meson() {
   local min_version="${1:-1.6.1}"
 
+  install_pip_package "meson>=$min_version"
+  need_cmd meson
+  log "meson $(meson --version)"
+}
+
+install_pip_package() {
+  local package="$1"
+
   need_cmd python3
-  if ! python3 -m pip install --user --break-system-packages "meson>=$min_version"; then
-    python3 -m pip install --user "meson>=$min_version"
+  if ! python3 -m pip install --user --break-system-packages "$package"; then
+    python3 -m pip install --user "$package"
   fi
 
   export PATH="$HOME/.local/bin:$PATH"
   hash -r
-  need_cmd meson
-  log "meson $(meson --version)"
 }
 
 download_url() {
   local url="$1"
   local out="$2"
+  local retry_args=(--retry 5 --retry-delay 5 --connect-timeout 30)
+
+  if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+    retry_args+=(--retry-all-errors)
+  fi
+
   log "download $url"
-  curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 -o "$out" "$url"
+  curl -fL "${retry_args[@]}" -o "$out" "$url"
+}
+
+git_retry() {
+  local attempt status
+  for attempt in 1 2 3 4 5; do
+    if "$@"; then
+      return 0
+    else
+      status=$?
+    fi
+    if [[ "$attempt" -eq 5 ]]; then
+      return "$status"
+    fi
+    log "git command failed with $status, retrying in 5s: $*"
+    sleep 5
+  done
+}
+
+git_clone_retry() {
+  local dest="${@: -1}"
+  local attempt status
+
+  for attempt in 1 2 3 4 5; do
+    rm -rf "$dest"
+    if git clone "$@"; then
+      return 0
+    else
+      status=$?
+    fi
+    if [[ "$attempt" -eq 5 ]]; then
+      return "$status"
+    fi
+    log "git clone failed with $status, retrying in 5s: $*"
+    sleep 5
+  done
 }
 
 sha256_file() {
@@ -198,6 +259,6 @@ clone_git_tag() {
   rm -rf "$dest"
   git init "$dest"
   git -C "$dest" remote add origin "$repo_url"
-  git -C "$dest" fetch --depth 1 origin "refs/tags/$tag:refs/tags/$tag"
+  git_retry git -C "$dest" fetch --depth 1 origin "refs/tags/$tag:refs/tags/$tag"
   git -C "$dest" checkout --detach "refs/tags/$tag"
 }

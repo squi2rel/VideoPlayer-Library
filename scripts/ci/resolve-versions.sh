@@ -8,8 +8,9 @@ source "$SCRIPT_DIR/common.sh"
 
 vlc_input="${VLC_VERSION_INPUT:-latest-3}"
 android_libvlc_input="${ANDROID_LIBVLC_VERSION_INPUT:-latest-3}"
-mpv_input="${MPV_REF_INPUT:-latest-release}"
+mpv_input="${MPV_REF_INPUT:-latest-commit}"
 mpv_android_input="${MPV_ANDROID_REF_INPUT:-latest-release}"
+mpv_repo_url="${MPV_REPO_URL:-https://github.com/squi2rel/mpv.git}"
 
 latest_vlc_3() {
   local tmp
@@ -54,24 +55,11 @@ PY
   rm -f "$tmp"
 }
 
-latest_mpv_tag() {
-  local tmp
-  tmp="$(mktemp)"
-  git ls-remote --tags https://github.com/mpv-player/mpv.git 'v*' |
-    awk '{print $2}' |
-    sed -E 's#refs/tags/##; s#\^\{\}##' |
-    sort -u >"$tmp"
-  python3 - "$tmp" <<'PY'
-import re
-import sys
-
-tags = [line.strip() for line in open(sys.argv[1], encoding="utf-8", errors="ignore") if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", line.strip())]
-tags = sorted(tags, key=lambda s: tuple(int(part) for part in s[1:].split(".")))
-if not tags:
-    raise SystemExit("could not resolve latest mpv release tag")
-print(tags[-1])
-PY
-  rm -f "$tmp"
+latest_mpv_commit() {
+  local ref
+  ref="$(git ls-remote "$mpv_repo_url" HEAD | awk 'NR == 1 {print $1}')"
+  [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || die "could not resolve latest mpv commit from $mpv_repo_url"
+  printf '%s\n' "$ref"
 }
 
 latest_mpv_android_tag() {
@@ -106,12 +94,12 @@ resolve_value() {
 
 vlc_version="$(resolve_value "$vlc_input" latest_vlc_3)"
 android_libvlc_version="$(resolve_value "$android_libvlc_input" latest_android_libvlc_3)"
-mpv_ref="$(resolve_value "$mpv_input" latest_mpv_tag)"
+mpv_ref="$(resolve_value "$mpv_input" latest_mpv_commit)"
 mpv_android_ref="$(resolve_value "$mpv_android_input" latest_mpv_android_tag)"
 
 require_vlc_release_version "$vlc_version"
 require_android_libvlc_release_version "$android_libvlc_version"
-require_mpv_release_ref "$mpv_ref"
+require_mpv_source_ref "$mpv_ref"
 require_mpv_android_release_ref "$mpv_android_ref"
 
 log "vlc_version=$vlc_version"

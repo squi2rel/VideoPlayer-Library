@@ -9,18 +9,20 @@ source "$SCRIPT_DIR/common.sh"
 target_os="${TARGET_OS:?TARGET_OS is required}"
 target_arch="${TARGET_ARCH:?TARGET_ARCH is required}"
 mpv_ref="${MPV_REF:?MPV_REF is required}"
+mpv_repo_url="${MPV_REPO_URL:-https://github.com/squi2rel/mpv.git}"
 
-require_mpv_release_ref "$mpv_ref"
+require_mpv_source_ref "$mpv_ref"
 unset TARGET_ARCH
 
 asset_name="libmpv-$target_os-$target_arch"
-source_url="https://github.com/mpv-player/mpv.git#$mpv_ref"
+source_url="$mpv_repo_url#$mpv_ref"
 src_dir="$WORK_DIR/mpv-$target_os-$target_arch"
 prefix="$WORK_DIR/mpv-prefix-$target_os-$target_arch"
 package_dir="$WORK_DIR/$asset_name"
 deps_dir="$WORK_DIR/mpv-deps-$target_os-$target_arch"
 download_cache="${DOWNLOAD_CACHE:-$WORK_DIR/downloads}"
 desktop_cross_file="$WORK_DIR/meson-cross-$target_os-$target_arch.txt"
+wayland_native_prefix="$WORK_DIR/wayland-scanner-$target_os-$target_arch"
 
 ffmpeg_ref="${FFMPEG_REF:-n7.1.2}"
 dav1d_ref="${DAV1D_REF:-1.5.3}"
@@ -29,12 +31,13 @@ libxml2_ref="${LIBXML2_REF:-v2.15.3}"
 fontconfig_ref="${FONTCONFIG_REF:-2.17.1}"
 mbedtls_version="${MBEDTLS_VERSION:-3.6.6}"
 libass_ref="${LIBASS_REF:-0.17.5}"
-libplacebo_ref="${LIBPLACEBO_REF:-v6.338.2}"
+libplacebo_ref="${LIBPLACEBO_REF:-v7.360.1}"
 rubberband_ref="${RUBBERBAND_REF:-v4.0.0}"
 uchardet_ref="${UCHARDET_REF:-v0.0.8}"
 zimg_ref="${ZIMG_REF:-release-3.0.6}"
 libsixel_ref="${LIBSIXEL_REF:-v1.9.0}"
 libdisplay_info_ref="${LIBDISPLAY_INFO_REF:-0.1.1}"
+wayland_version="${WAYLAND_VERSION:-1.25.0}"
 nvcodec_ref="${NVCODEC_REF:-n13.0.19.0}"
 vulkan_sdk_ref="${VULKAN_SDK_REF:-vulkan-sdk-1.4.350.1}"
 vulkan_headers_ref="${VULKAN_HEADERS_REF:-$vulkan_sdk_ref}"
@@ -342,7 +345,7 @@ set_cmake_args() {
 }
 
 reset_dirs() {
-  rm -rf "$src_dir" "$prefix" "$package_dir" "$deps_dir"
+  rm -rf "$src_dir" "$prefix" "$package_dir" "$deps_dir" "$wayland_native_prefix"
   mkdir -p "$prefix" "$package_dir" "$deps_dir" "$download_cache"
 }
 
@@ -371,11 +374,11 @@ install_linux_deps() {
     local build_packages=(
       autoconf automake autopoint build-essential ca-certificates cmake curl git libtool
       m4 make nasm ninja-build pkg-config python3 python3-pip tar unzip wget xz-utils
-      hwdata yasm zip
+      hwdata libexpat1-dev yasm zip
     )
     local platform_dev_packages=(
       libasound2-dev libjack-jackd2-dev libopenal-dev libpipewire-0.3-dev libpulse-dev libsdl2-dev libsndio-dev
-      libcaca-dev libdrm-dev libegl-dev libgbm-dev
+      libcaca-dev libdrm-dev libegl-dev libffi-dev libgbm-dev
       libgl-dev libgles-dev libvulkan-dev libwayland-dev libxkbcommon-dev libx11-dev
       libxext-dev libxfixes-dev libxpresent-dev libxrandr-dev libxss-dev libxv-dev
       libva-dev libvdpau-dev
@@ -926,6 +929,62 @@ build_libdisplay_info() {
   meson install -C "$deps_dir/libdisplay-info/builddir"
 }
 
+build_wayland() {
+  [[ "$target_os" == "linux" ]] || return 0
+
+  local source_dir="$deps_dir/wayland-$wayland_version"
+  extract_tar_once "https://gitlab.freedesktop.org/wayland/wayland/-/releases/$wayland_version/downloads/wayland-$wayland_version.tar.xz" \
+    "wayland-$wayland_version.tar.xz" \
+    "$source_dir"
+
+  local native_build_dir="$source_dir/build-native-scanner"
+  rm -rf "$native_build_dir"
+  env -u PKG_CONFIG_LIBDIR -u PKG_CONFIG_SYSROOT_DIR \
+    -u PKG_CONFIG_PATH_FOR_BUILD -u PKG_CONFIG_LIBDIR_FOR_BUILD \
+    -u LIBRARY_PATH -u CPATH -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH \
+    -u CPPFLAGS -u CXXFLAGS \
+    PKG_CONFIG_PATH= \
+    PKG_CONFIG="${BUILD_PKG_CONFIG:-pkg-config}" \
+    CC="${BUILD_CC:-cc}" \
+    AR="${BUILD_AR:-ar}" \
+    RANLIB="${BUILD_RANLIB:-ranlib}" \
+    STRIP="${BUILD_STRIP:-strip}" \
+    CFLAGS="-O2 -pipe" \
+    LDFLAGS= \
+    meson setup "$native_build_dir" "$source_dir" \
+      --prefix "$wayland_native_prefix" \
+      --libdir lib \
+      --buildtype=release \
+      -Ddocumentation=false \
+      -Dtests=false \
+      -Ddtd_validation=false \
+      -Dlibraries=false \
+      -Dscanner=true
+  meson compile -C "$native_build_dir"
+  meson install -C "$native_build_dir"
+
+  export PATH="$wayland_native_prefix/bin:$PATH"
+  export PKG_CONFIG_PATH="$wayland_native_prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+  export PKG_CONFIG_PATH_FOR_BUILD="$wayland_native_prefix/lib/pkgconfig${PKG_CONFIG_PATH_FOR_BUILD:+:$PKG_CONFIG_PATH_FOR_BUILD}"
+  hash -r
+  need_cmd wayland-scanner
+
+  meson_setup_static "$source_dir" "$source_dir/builddir" \
+    -Ddocumentation=false \
+    -Dtests=false \
+    -Ddtd_validation=false \
+    -Dlibraries=true \
+    -Dscanner=false
+  meson compile -C "$source_dir/builddir"
+  meson install -C "$source_dir/builddir"
+
+  PKG_CONFIG_LIBDIR="$pkg_config_libdir" pkg-config --exists \
+    "wayland-client >= 1.23.0" \
+    "wayland-cursor >= 1.23.0" \
+    "wayland-egl >= 9.0.0" ||
+    die "packaged Wayland $wayland_version was not found through pkg-config"
+}
+
 build_nvcodec_headers() {
   [[ "$target_os" == "linux" ]] || return 0
   [[ "$target_arch" != "arm32" ]] || return 0
@@ -1094,12 +1153,16 @@ build_ffmpeg() {
       --enable-libpulse
       --enable-openal
       --enable-opengl
-      --enable-sdl2
       --enable-libdrm
       --enable-vaapi
       --enable-vdpau
       --enable-vulkan
     )
+    if [[ "$target_arch" == "arm32" ]]; then
+      args+=(--disable-sdl2)
+    else
+      args+=(--enable-sdl2)
+    fi
     if [[ "$target_arch" != "arm32" ]]; then
       args+=(--enable-ffnvcodec)
     fi
@@ -1246,7 +1309,7 @@ build_libplacebo() {
 }
 
 prepare_mpv_source() {
-  clone_git_tag https://github.com/mpv-player/mpv.git "$mpv_ref" "$src_dir"
+  clone_git_ref "$mpv_repo_url" "$mpv_ref" "$src_dir"
   cd "$src_dir"
   meson wrap update-db || true
   meson wrap install mujs || true
@@ -1341,6 +1404,9 @@ build_mpv() {
       -Dvdpau=enabled
       -Dvdpau-gl-x11=enabled
       -Dwayland=enabled
+      -Dwayland:documentation=false
+      -Dwayland:tests=false
+      -Dwayland:dtd_validation=false
       -Dx11=enabled
       -Dxv=enabled
       -Dcuda-hwaccel="$cuda_option"
@@ -1348,7 +1414,13 @@ build_mpv() {
     )
   else
     args+=(
+      -Dcocoa=disabled
+      -Dgl-cocoa=disabled
       -Dvulkan=disabled
+      -Dswift-build=disabled
+      -Dmacos-cocoa-cb=disabled
+      -Dmacos-media-player=disabled
+      -Dmacos-touchbar=disabled
       -Db_lto=true
       -Db_lto_mode=thin
     )
@@ -1503,6 +1575,7 @@ build_uchardet
 build_zimg
 build_libsixel
 build_libdisplay_info
+build_wayland
 build_nvcodec_headers
 build_vulkan_headers
 build_shaderc

@@ -19,8 +19,8 @@ on:
         required: true
         type: string
       mpv_ref:
-        description: mpv release tag, or latest-release
-        default: latest-release
+        description: squi2rel/mpv commit hash, release tag, or latest-commit
+        default: latest-commit
         required: true
         type: string
       mpv_android_ref:
@@ -59,7 +59,7 @@ jobs:
         env:
           VLC_VERSION_INPUT: ${{ github.event.inputs.vlc_version || 'latest-3' }}
           ANDROID_LIBVLC_VERSION_INPUT: ${{ github.event.inputs.android_libvlc_version || 'latest-3' }}
-          MPV_REF_INPUT: ${{ github.event.inputs.mpv_ref || 'latest-release' }}
+          MPV_REF_INPUT: ${{ github.event.inputs.mpv_ref || 'latest-commit' }}
           MPV_ANDROID_REF_INPUT: ${{ github.event.inputs.mpv_android_ref || 'latest-release' }}
           RELEASE_TAG_INPUT: ${{ github.event.inputs.release_tag || 'runtime-latest' }}
         run: |
@@ -250,6 +250,7 @@ jobs:
       - name: Build mpv Android runtime
         env:
           TARGET_ARCH: ${{ matrix.abi }}
+          MPV_REF: ${{ needs.resolve.outputs.mpv_ref }}
           MPV_ANDROID_REF: ${{ needs.resolve.outputs.mpv_android_ref }}
         run: bash scripts/ci/build-mpv-android.sh
       - uses: actions/upload-artifact@v4

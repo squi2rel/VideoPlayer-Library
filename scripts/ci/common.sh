@@ -245,6 +245,12 @@ require_mpv_release_ref() {
   [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "mpv ref must be a release tag like v0.41.0: $ref"
 }
 
+require_mpv_source_ref() {
+  local ref="$1"
+  [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || "$ref" =~ ^[0-9a-f]{40}$ ]] ||
+    die "mpv ref must be a release tag like v0.41.0 or a full commit hash: $ref"
+}
+
 require_mpv_android_release_ref() {
   local ref="$1"
   [[ "$ref" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "mpv-android ref must be a date release tag like 2026-04-25: $ref"
@@ -261,4 +267,22 @@ clone_git_tag() {
   git -C "$dest" remote add origin "$repo_url"
   git_retry git -C "$dest" fetch --depth 1 origin "refs/tags/$tag:refs/tags/$tag"
   git -C "$dest" checkout --detach "refs/tags/$tag"
+}
+
+clone_git_ref() {
+  local repo_url="$1"
+  local ref="$2"
+  local dest="$3"
+
+  need_cmd git
+  rm -rf "$dest"
+  git init "$dest"
+  git -C "$dest" remote add origin "$repo_url"
+  if [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    git_retry git -C "$dest" fetch --depth 1 origin "refs/tags/$ref:refs/tags/$ref"
+    git -C "$dest" checkout --detach "refs/tags/$ref"
+  else
+    git_retry git -C "$dest" fetch --depth 1 origin "$ref"
+    git -C "$dest" checkout --detach FETCH_HEAD
+  fi
 }

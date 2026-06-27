@@ -8,15 +8,20 @@ source "$SCRIPT_DIR/common.sh"
 
 target_abi="${TARGET_ARCH:?TARGET_ARCH is required}"
 mpv_android_ref="${MPV_ANDROID_REF:?MPV_ANDROID_REF is required}"
+mpv_ref="${MPV_REF:?MPV_REF is required}"
+mpv_repo_url="${MPV_REPO_URL:-https://github.com/squi2rel/mpv.git}"
 
 require_mpv_android_release_ref "$mpv_android_ref"
+require_mpv_source_ref "$mpv_ref"
 
 asset_name="libmpv-android-$target_abi"
 source_url="https://github.com/mpv-android/mpv-android.git#$mpv_android_ref"
+mpv_source_url="$mpv_repo_url#$mpv_ref"
 src_dir="$WORK_DIR/mpv-android-$target_abi"
 package_dir="$WORK_DIR/$asset_name"
 
 assert_not_nightly_url "$source_url"
+assert_not_nightly_url "$mpv_source_url"
 
 case "$target_abi" in
   arm64-v8a) mpv_arch="arm64" ;;
@@ -38,11 +43,14 @@ install_deps() {
 }
 
 patch_mpv_android_static_linking() {
-  python3 - "$src_dir" <<'PY'
+  python3 - "$src_dir" "$mpv_repo_url" "$mpv_ref" <<'PY'
 from pathlib import Path
+import shlex
 import sys
 
 root = Path(sys.argv[1])
+mpv_repo_url = sys.argv[2]
+mpv_ref = sys.argv[3]
 
 def replace_once(path: Path, old: str, new: str) -> None:
     text = path.read_text(encoding="utf-8")
@@ -135,7 +143,7 @@ depinfo = root / "buildscripts" / "include" / "depinfo.sh"
 replace_once(
     depinfo,
     "v_fontconfig=2.17.1\n",
-    "v_fontconfig=2.17.1\nv_libiconv=1.18\nv_rubberband=4.0.0\nv_uchardet=0.0.8\nv_zimg=3.0.6\n",
+    "v_fontconfig=2.17.1\nv_libplacebo=7.360.1\nv_libiconv=1.18\nv_rubberband=4.0.0\nv_uchardet=0.0.8\nv_zimg=3.0.6\n",
 )
 replace_once(
     depinfo,
@@ -145,17 +153,23 @@ replace_once(
 replace_once(
     depinfo,
     'ci_tarball="prefix-ndk-${v_ndk}-lua-${v_lua}-unibreak-${v_unibreak}-harfbuzz-${v_harfbuzz}-fribidi-${v_fribidi}-freetype-${v_freetype}-libxml2-${v_libxml2}-fontconfig-${v_fontconfig}-mbedtls-${v_mbedtls}-ffmpeg-${v_ci_ffmpeg}.tgz"',
-    'ci_tarball="prefix-ndk-${v_ndk}-lua-${v_lua}-unibreak-${v_unibreak}-harfbuzz-${v_harfbuzz}-fribidi-${v_fribidi}-freetype-${v_freetype}-libxml2-${v_libxml2}-fontconfig-${v_fontconfig}-mbedtls-${v_mbedtls}-ffmpeg-${v_ci_ffmpeg}-libiconv-${v_libiconv}-rubberband-${v_rubberband}-uchardet-${v_uchardet}-zimg-${v_zimg}.tgz"',
+    'ci_tarball="prefix-ndk-${v_ndk}-lua-${v_lua}-unibreak-${v_unibreak}-harfbuzz-${v_harfbuzz}-fribidi-${v_fribidi}-freetype-${v_freetype}-libxml2-${v_libxml2}-fontconfig-${v_fontconfig}-mbedtls-${v_mbedtls}-ffmpeg-${v_ci_ffmpeg}-libplacebo-${v_libplacebo}-libiconv-${v_libiconv}-rubberband-${v_rubberband}-uchardet-${v_uchardet}-zimg-${v_zimg}.tgz"',
 )
 
 download_deps = root / "buildscripts" / "include" / "download-deps.sh"
 replace_once(
     download_deps,
-    "# mpv\n[ ! -d mpv ] && git clone https://github.com/mpv-player/mpv\n",
-    """# libiconv
+    "# libplacebo\n[ ! -d libplacebo ] && git clone --recursive https://github.com/haasn/libplacebo\n",
+    """# libplacebo
+if [ ! -d libplacebo ]; then
+\tgit clone --recursive --branch v$v_libplacebo https://github.com/haasn/libplacebo
+fi
+""",
+)
+mpv_clone = f"""# libiconv
 if [ ! -d libiconv ]; then
 \tmkdir libiconv
-\t$WGET https://ftp.gnu.org/pub/gnu/libiconv/libiconv-$v_libiconv.tar.gz -O - | \\
+\t$WGET https://ftpmirror.gnu.org/gnu/libiconv/libiconv-$v_libiconv.tar.gz -O - | \\
 \t\ttar -xz -C libiconv --strip-components=1
 fi
 
@@ -181,8 +195,15 @@ if [ ! -d zimg ]; then
 fi
 
 # mpv
-[ ! -d mpv ] && git clone https://github.com/mpv-player/mpv
-""",
+if [ ! -d mpv ]; then
+\tgit clone {shlex.quote(mpv_repo_url)} mpv
+\t(cd mpv && git checkout {shlex.quote(mpv_ref)})
+fi
+"""
+replace_once(
+    download_deps,
+    "# mpv\n[ ! -d mpv ] && git clone https://github.com/mpv-player/mpv\n",
+    mpv_clone,
 )
 
 scripts = root / "buildscripts" / "scripts"

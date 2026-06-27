@@ -8,11 +8,12 @@ source "$SCRIPT_DIR/common.sh"
 
 target_arch="${TARGET_ARCH:?TARGET_ARCH is required}"
 mpv_ref="${MPV_REF:?MPV_REF is required}"
+mpv_repo_url="${MPV_REPO_URL:-https://github.com/squi2rel/mpv.git}"
 
-require_mpv_release_ref "$mpv_ref"
+require_mpv_source_ref "$mpv_ref"
 
 asset_name="libmpv-windows-$target_arch"
-source_url="https://github.com/mpv-player/mpv.git#$mpv_ref"
+source_url="$mpv_repo_url#$mpv_ref"
 src_dir="$WORK_DIR/mpv-windows-$target_arch"
 prefix="$WORK_DIR/mpv-prefix-windows-$target_arch"
 package_dir="$WORK_DIR/$asset_name"
@@ -27,7 +28,7 @@ dav1d_ref="${DAV1D_REF:-1.5.3}"
 lcms2_ref="${LCMS2_REF:-lcms2.19.1}"
 mbedtls_version="${MBEDTLS_VERSION:-3.6.6}"
 libass_ref="${LIBASS_REF:-0.17.5}"
-libplacebo_ref="${LIBPLACEBO_REF:-v6.338.2}"
+libplacebo_ref="${LIBPLACEBO_REF:-v7.360.1}"
 nvcodec_ref="${NVCODEC_REF:-n13.0.19.0}"
 vulkan_sdk_ref="${VULKAN_SDK_REF:-vulkan-sdk-1.4.350.1}"
 vulkan_headers_ref="${VULKAN_HEADERS_REF:-$vulkan_sdk_ref}"
@@ -902,7 +903,7 @@ build_ffmpeg() {
     --enable-gpl
     --enable-version3
     --enable-zlib
-    --enable-mbedtls
+    --enable-schannel
     --enable-lcms2
     --enable-libass
     --enable-libzimg
@@ -922,7 +923,7 @@ build_ffmpeg() {
     --enable-libplacebo
     --extra-cflags="$CFLAGS -DAL_LIBTYPE_STATIC"
     --extra-ldflags="$LDFLAGS"
-    --extra-libs="-lc++ -lc++abi -lunwind -lws2_32 -lbcrypt -lwinmm -lole32 -luuid -lshlwapi"
+    --extra-libs="-lc++ -lc++abi -lunwind -lws2_32 -lbcrypt -lsecur32 -lwinmm -lole32 -luuid -lshlwapi"
   )
 
   if [[ "$target_arch" != arm64 ]]; then
@@ -1114,7 +1115,7 @@ build_zimg() {
 }
 
 prepare_mpv_source() {
-  clone_git_tag https://github.com/mpv-player/mpv.git "$mpv_ref" "$src_dir"
+  clone_git_ref "$mpv_repo_url" "$mpv_ref" "$src_dir"
   cd "$src_dir"
   meson wrap update-db || true
   meson wrap install mujs || true
@@ -1190,7 +1191,7 @@ assert_static_mpv_dll_deps() {
   forbidden="$(
     "$objdump" -p "$dll" |
       awk '/DLL Name:/ {print tolower($3)}' |
-      grep -E '(avcodec|avfilter|avformat|avutil|avdevice|swresample|swscale|ass|placebo|lua|luajit|mujs|lcms|zlib|png|dav1d|freetype|fribidi|harfbuzz|rubberband|uchardet|zimg|webp|soxr|mysofa|openmpt|archive|srt|mbed|openal|unwind|xxhash|shaderc|spirv|vulkan-1|iconv|winpthread|libgcc|libstdc)' || true
+      grep -E '(avcodec|avfilter|avformat|avutil|avdevice|swresample|swscale|ass|placebo|lua|luajit|mujs|lcms|zlib|png|dav1d|freetype|fribidi|harfbuzz|rubberband|uchardet|zimg|webp|soxr|mysofa|openmpt|archive|srt|mbed|ssl|crypto|openal|unwind|xxhash|shaderc|spirv|vulkan-1|iconv|winpthread|libgcc|libstdc)' || true
   )"
   [[ -z "$forbidden" ]] || die "libmpv still imports dynamic third-party DLLs: $forbidden"
 }
